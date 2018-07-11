@@ -1,4 +1,4 @@
-# OctoBot-IA-Template
+# OctoBot-IA-Template [![Build Status](https://travis-ci.org/Drakkar-Software/OctoBot-IA-Tentacles.svg?branch=master)](https://travis-ci.org/Drakkar-Software/OctoBot-IA-Tentacles)
 ** REPOSITORY IN DEV **
 
 This repository contains IA evaluators, strategies, utilitary modules and trading modes for the [OctoBot](https://github.com/Drakkar-Software/OctoBot) project.
