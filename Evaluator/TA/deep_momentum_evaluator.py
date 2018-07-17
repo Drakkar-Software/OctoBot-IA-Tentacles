@@ -9,7 +9,7 @@ $tentacle_description: {
     "version": "1.0.0",
     "requirements": [],
     "tests":[],
-    "resource_files": ["test_resource.data"]
+    "resource_files": ["test_resource.data", "octopus.png"]
 }
 """
 
