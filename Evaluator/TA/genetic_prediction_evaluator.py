@@ -25,13 +25,13 @@ $tentacle_description: {
 #
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
-from evaluator.TA.TA_evaluator import Evaluator
+from evaluator.TA.TA_evaluator import TrendEvaluator
 import numpy as np
 
-from Evaluator.Util.genetic_tools import Population, GeneticDataHandler
+from tentacles.Evaluator.Util import Population, GeneticDataHandler
 
 
-class GeneticPredictionEvaluator(Evaluator):
+class GeneticPredictionEvaluator(TrendEvaluator):
     DESCRIPTION = "Returns the open and close prices of previous candles."
     PAST_CANDLES_COUNT = 5
 

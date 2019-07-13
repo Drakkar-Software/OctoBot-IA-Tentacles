@@ -3,6 +3,7 @@ OctoBot Tentacle
 
 $tentacle_description: {
     "package_name": "OctoBot-IA-Tentacles",
+    "package_name": "OctoBot-IA-Tentacles",
     "name": "genetic_tools",
     "type": "Evaluator",
     "subtype": "Util",
@@ -40,7 +41,10 @@ random.seed(1234)
 def percent_diff(approx, correct):
     # print "approx, correct"
     # print approx, correct
-    return (approx - correct) / float(correct)
+    if correct > 0:
+        return (approx - correct) / float(correct)
+    else:
+        return 0
 
 
 class Individual:
@@ -64,7 +68,7 @@ class Individual:
         """
         num_signals = len(signal_ranges)
         repr_size = len(self.rep)
-        n = repr_size / num_signals
+        n = int(repr_size / num_signals)
 
         individual_signals = [self.rep[i:i + n] for i in range(0, len(self.rep), n)]
         individual_vals = []
@@ -293,9 +297,9 @@ class GeneticDataHandler:
 
     def signal_ranges(self):
         signal_ranges = []
-        if not self.dataset:
+        if self.dataset:
             for signal in self.dataset[0].get_signals():
-                l = map(lambda x: x.get(signal), self.dataset)
+                l = [dataset.get(signal) for dataset in self.dataset]
                 min_max = (min(l), max(l))
                 signal_ranges.append(min_max)
         else:

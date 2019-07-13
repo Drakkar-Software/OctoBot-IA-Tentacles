@@ -8,8 +8,8 @@ $tentacle_description: {
     "subtype": "Strategies",
     "version": "1.0.0",
     "requirements": ["genetic_prediction_evaluator, genetic_tools"],
-    "config_files": ["GeneticPredictionStrategy.json"],
-    "config_schema_files": ["GeneticPredictionStrategy_schema.json"]
+    "config_files": ["GeneticPredictionStrategyEvaluator.json"],
+    "config_schema_files": ["GeneticPredictionStrategyEvaluator_schema.json"]
 }
 """
 #  Drakkar-Software OctoBot
@@ -34,7 +34,7 @@ from evaluator.Strategies import MixedStrategiesEvaluator
 from tentacles.Evaluator.TA import GeneticPredictionEvaluator
 
 
-class GeneticPredictionStrategy(MixedStrategiesEvaluator):
+class GeneticPredictionStrategyEvaluator(MixedStrategiesEvaluator):
     DESCRIPTION = ""
     CANDLES_DATA_CLASS_NAME = GeneticPredictionEvaluator.get_name()
 

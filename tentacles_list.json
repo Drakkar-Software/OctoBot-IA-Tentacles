@@ -1,1 +1,1 @@
-{}
+{"genetic_prediction_evaluator": {"package_name": "OctoBot-IA-Tentacles", "name": "genetic_prediction_evaluator", "type": "Evaluator", "subtype": "TA", "version": "1.0.0", "requirements": ["genetic_tools"]}, "genetic_tools": {"package_name": "OctoBot-IA-Tentacles", "name": "genetic_tools", "type": "Evaluator", "subtype": "Util", "version": "1.0.0", "requirements": []}}
