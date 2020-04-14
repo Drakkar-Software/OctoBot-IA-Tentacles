@@ -1,16 +1,4 @@
-"""
-OctoBot Tentacle
-
-$tentacle_description: {
-    "package_name": "OctoBot-IA-Tentacles",
-    "name": "ann_evaluator",
-    "type": "Evaluator",
-    "subtype": "TA",
-    "version": "1.0.0",
-    "requirements": []
-}
-"""
-#  Drakkar-Software OctoBot
+#  Drakkar-Software OctoBot-IA-Tentacles
 #  Copyright (c) Drakkar-Software, All rights reserved.
 #
 #  This library is free software; you can redistribute it and/or
@@ -27,11 +15,10 @@ $tentacle_description: {
 #  License along with this library.
 
 import math
-from config import *
-from evaluator.TA.TA_evaluator import MomentumEvaluator
+from octobot_evaluators.evaluator import TAEvaluator
 
-class ANNMomentumEvaluator(MomentumEvaluator):
-    DESCRIPTION = ""
+
+class AnnTAEvaluator(TAEvaluator):
     THRESHOLD = 0.0014
 
     def pine_activation_function_linear(self, diff):
@@ -40,28 +27,31 @@ class ANNMomentumEvaluator(MomentumEvaluator):
     def pine_activation_function_tanh(self, diff):
         return (math.exp(diff) - math.exp(-diff)) / (math.exp(diff) + math.exp(-diff))
 
-    def get_diff(self):
-        yesterday = self.data[PriceIndexes.IND_PRICE_OPEN.value][-2]
-        today = self.data[PriceIndexes.IND_PRICE_OPEN.value][-1]
+    def get_diff(self, exchange: str, exchange_id: str, symbol: str, time_frame):
+        candle_data = self.get_symbol_candles(exchange, exchange_id, symbol, time_frame). \
+            get_symbol_close_candles(limit=2)
+        yesterday = candle_data[-2]
+        today = candle_data[-1]
         delta = today - yesterday
         return delta / yesterday
 
-    async def eval_impl(self):
-        l0_0 = self.pine_activation_function_linear(self.get_diff())
-        l0_1 = self.pine_activation_function_linear(self.get_diff())
-        l0_2 = self.pine_activation_function_linear(self.get_diff())
-        l0_3 = self.pine_activation_function_linear(self.get_diff())
-        l0_4 = self.pine_activation_function_linear(self.get_diff())
-        l0_5 = self.pine_activation_function_linear(self.get_diff())
-        l0_6 = self.pine_activation_function_linear(self.get_diff())
-        l0_7 = self.pine_activation_function_linear(self.get_diff())
-        l0_8 = self.pine_activation_function_linear(self.get_diff())
-        l0_9 = self.pine_activation_function_linear(self.get_diff())
-        l0_10 = self.pine_activation_function_linear(self.get_diff())
-        l0_11 = self.pine_activation_function_linear(self.get_diff())
-        l0_12 = self.pine_activation_function_linear(self.get_diff())
-        l0_13 = self.pine_activation_function_linear(self.get_diff())
-        l0_14 = self.pine_activation_function_linear(self.get_diff())
+    async def ohlcv_callback(self, exchange: str, exchange_id: str,
+                             cryptocurrency: str, symbol: str, time_frame, candle):
+        l0_0 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_1 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_2 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_3 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_4 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_5 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_6 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_7 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_8 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_9 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_10 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_11 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_12 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_13 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
+        l0_14 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
 
         l1_0 = self.pine_activation_function_tanh(
             l0_0 * 5.040340774 + l0_1 * -1.3025994088 + l0_2 * 19.4225543981 + l0_3 * 1.1796960423 + l0_4 * 2.4299395823 + l0_5 * 3.159003445 + l0_6 * 4.6844527551 + l0_7 * -6.1079267196 + l0_8 * -2.4952869198 + l0_9 * -4.0966081154 + l0_10 * -2.2432843111 + l0_11 * -0.6105764807 + l0_12 * -0.0775684605 + l0_13 * -0.7984753138 + l0_14 * 3.4495907342)
@@ -150,4 +140,4 @@ class ANNMomentumEvaluator(MomentumEvaluator):
             self.eval_note = -1
         elif l3_0 < -self.THRESHOLD:
             self.eval_note = 1
-
+        await self.evaluation_completed(cryptocurrency, symbol, time_frame)
