@@ -1,0 +1,17 @@
+{
+    "default_config": [
+        "DoubleMovingAverageTrendEvaluator",
+        "RSIMomentumEvaluator"
+    ],
+    "required_evaluators": [
+        "DoubleMovingAverageTrendEvaluator",
+        "RSIMomentumEvaluator"
+    ],
+    "required_time_frames": [
+        "1h",
+        "4h",
+        "1d",
+        "1w"
+    ],
+    "is_training": false
+}

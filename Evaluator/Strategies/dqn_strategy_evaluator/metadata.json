@@ -1,0 +1,6 @@
+{
+  "version": "1.2.0",
+  "origin_package": "OctoBot-IA-Tentacles",
+  "tentacles": ["DQNStrategyEvaluator", "DQNStrategyEvaluatorTrainer"],
+  "tentacles-requirements": []
+}
