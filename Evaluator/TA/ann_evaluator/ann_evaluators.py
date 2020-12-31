@@ -15,10 +15,12 @@
 #  License along with this library.
 
 import math
-from octobot_evaluators.evaluator import TAEvaluator
+import octobot_evaluators.evaluators as evaluators
+import octobot_trading.api as trading_api
+import octobot_commons.constants as commons_constants
 
 
-class AnnTAEvaluator(TAEvaluator):
+class AnnTAEvaluator(evaluators.TAEvaluator):
     THRESHOLD = 0.0014
 
     def pine_activation_function_linear(self, diff):
@@ -28,15 +30,20 @@ class AnnTAEvaluator(TAEvaluator):
         return (math.exp(diff) - math.exp(-diff)) / (math.exp(diff) + math.exp(-diff))
 
     def get_diff(self, exchange: str, exchange_id: str, symbol: str, time_frame):
-        candle_data = self.get_symbol_candles(exchange, exchange_id, symbol, time_frame). \
-            get_symbol_close_candles(limit=2)
+        candle_data = trading_api.get_symbol_close_candles(self.get_exchange_symbol_data(exchange, exchange_id, symbol),
+                                                           time_frame,
+                                                           limit=2)
         yesterday = candle_data[-2]
         today = candle_data[-1]
         delta = today - yesterday
         return delta / yesterday
 
     async def ohlcv_callback(self, exchange: str, exchange_id: str,
-                             cryptocurrency: str, symbol: str, time_frame, candle):
+                             cryptocurrency: str, symbol: str, time_frame, candle, inc_in_construction_data):
+        await self.evaluate(cryptocurrency, symbol, time_frame, exchange, exchange_id)
+
+    async def evaluate(self, cryptocurrency, symbol, time_frame, exchange, exchange_id):
+        self.eval_note = commons_constants.START_PENDING_EVAL_NOTE
         l0_0 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
         l0_1 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
         l0_2 = self.pine_activation_function_linear(self.get_diff(exchange, exchange_id, symbol, time_frame))
