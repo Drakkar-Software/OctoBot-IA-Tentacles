@@ -140,17 +140,17 @@ jobs:
           branch="${GITHUB_REF##*/}"
           cd OctoBot && python start.py tentacles -d "../new_tentacles" -p "../../new_tentacles.zip" -upe ${{ secrets.NEXUS_DEV_PATH }}/packages/full/${{ secrets.TENTACLES_REPOSITORY_NAME }} ${branch////_}.zip
 
-  notify:
-    name: Notify
-    runs-on: ubuntu-latest
-    needs:
-      - tests
-      - upload_tentacles
-    if: ${{ failure() }}
-
-    steps:
-      - name: Notify discord
-        uses: sarisia/actions-status-discord@v1
-        with:
-          status: Failure
-          webhook: ${{ secrets.DISCORD_GITHUB_WEBHOOK }}
+#  notify:
+#    name: Notify
+#    runs-on: ubuntu-latest
+#    needs:
+#      - tests
+#      - upload_tentacles
+#    if: ${{ failure() }}
+#
+#    steps:
+#      - name: Notify discord
+#        uses: sarisia/actions-status-discord@v1
+#        with:
+#          status: Failure
+#          webhook: ${{ secrets.DISCORD_GITHUB_WEBHOOK }}
