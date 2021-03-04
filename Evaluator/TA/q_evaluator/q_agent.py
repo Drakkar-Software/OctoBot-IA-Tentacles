@@ -52,7 +52,7 @@ class QAgent:
         self.custom_objects = {"huber_loss": q_evaluator.huber_loss}  # important for loading the model from memory
         self.optimizer = Adam(lr=self.learning_rate)
 
-        if self.is_training and self.model_name is not None:
+        if not self.is_training and self.model_name is not None:
             self.model = self.load()
         else:
             self.model = self._model()

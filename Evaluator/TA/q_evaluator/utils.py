@@ -47,10 +47,8 @@ def sigmoid(v, logger):
         logger.error(f"Error happened during sigmoid calculation : {e}")
 
 
-def get_state(data, t, n_days):
-    d = t - n_days + 1
-    block = data[d: t + 1] if d >= 0 else -d * [data[0]] + data[0: t + 1]  # pad with t0
-    res = []
-    for i in range(n_days - 1):
-        res.append(sigmoid(block[i + 1] - block[i]))
-    return np.array([res])
+def get_state(prices, window_size, logger):
+    return np.array([
+        sigmoid(prices[i + 1] - prices[i], logger)
+        for i in range(window_size - 1)
+    ])

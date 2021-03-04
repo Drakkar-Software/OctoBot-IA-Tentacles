@@ -13,12 +13,10 @@
 #
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
-from argparse import Namespace
 
 from tqdm import tqdm
 
-from octobot.api import start_background_octobot_with_args
-from octobot.cli import start_octobot
+from octobot.cli import start_background_octobot_with_args
 
 BACKTESTING_FILES = ["ExchangeHistoryDataCollector_1589016793.8005197.data",
                      "ExchangeHistoryDataCollector_1588405922.6261444.data",

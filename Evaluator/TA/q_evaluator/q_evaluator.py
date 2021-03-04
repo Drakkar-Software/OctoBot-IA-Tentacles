@@ -38,15 +38,15 @@ class QEvaluator(TAEvaluator):
     MODEL_PATH = "models"
     WINDOW_SIZE = 10
     BATCH_SIZE = 32
-    EPISODE_COUNT = 100
     IS_TRAINING_CONFIG = "is_training"
 
     def __init__(self, tentacles_setup_config):
         super().__init__(tentacles_setup_config)
         self.exchange_id = None
         self.exchange_manager = None
+        self.is_training = get_tentacle_config(self.tentacles_setup_config, self.__class__)[self.IS_TRAINING_CONFIG]
         self.q_agent = q_evaluator.QAgent(
-            is_training=get_tentacle_config(self.tentacles_setup_config, self.__class__)[self.IS_TRAINING_CONFIG],
+            is_training=self.is_training,
             model_name=self.MODEL_NAME,
             model_path=self.MODEL_PATH,
             state_size=self.WINDOW_SIZE)
@@ -55,6 +55,11 @@ class QEvaluator(TAEvaluator):
         self.last_reward = 0
         self.previous_reward = 0
         self.episode = 0
+
+        self.q_agent.inventory = []
+        self.avg_loss = []
+        self.current_state = None
+        self.next_state = None
 
     async def start(self, bot_id: str) -> bool:
         await super().start(bot_id)
@@ -87,8 +92,7 @@ class QEvaluator(TAEvaluator):
                              cryptocurrency: str, symbol: str, time_frame, candle, inc_in_construction_data):
         self.episode += 1
         prices = self.get_prices(time_frame, symbol)
-        self.train(prices)
-        action, history = self.evaluate(prices)
+        action = self.train(prices) if self.is_training else self.evaluate(prices)
 
         if action == Actions.BUY.value:
             self.eval_note = -1
@@ -96,9 +100,18 @@ class QEvaluator(TAEvaluator):
             self.eval_note = 1
         if action == Actions.SIT.value:
             self.eval_note = 0
+        print(self.eval_note)
         await self.evaluation_completed(cryptocurrency, symbol, time_frame,
                                         eval_time=evaluators_util.get_eval_time(full_candle=candle,
                                                                                 time_frame=time_frame))
+
+    def is_done(self):
+        try:
+            if self.exchange_manager is not None and self.exchange_manager.backtesting:
+                return self.exchange_manager.backtesting.get_progress() >= 0.999
+        except ImportError:
+            self.logger.error(f"Can't get current exchange time: requires OctoBot-Trading package installed")
+        return False
 
     def get_prices(self, time_frame, symbol):
         return trading_api.get_symbol_close_candles(self.get_exchange_symbol_data(self.exchange_name,
@@ -107,68 +120,47 @@ class QEvaluator(TAEvaluator):
                                                     time_frame, include_in_construction=False)
 
     def train(self, data):
-        data_length = len(data) - 1
-        self.q_agent.inventory = []
-        avg_loss = []
-        state = q_evaluator.get_state(data, 0, self.WINDOW_SIZE + 1)
+        print("train")
+        reward = 0
+        action = Actions.SIT.value
+        self.next_state = q_evaluator.get_state(data, self.WINDOW_SIZE + 1, self.logger)
 
-        for t in tqdm.tqdm(range(data_length), total=data_length, leave=True,
-                           desc=f"Episode {self.episode}/{self.EPISODE_COUNT}"):
-            reward = 0
-            next_state = q_evaluator.get_state(data, t + 1, self.WINDOW_SIZE + 1)
-
-            # select an action
-            action = self.q_agent.act(state)
-
+        if self.current_state is not None:
+            action = self.q_agent.act(self.current_state)
             if action == Actions.BUY.value:
-                self.q_agent.inventory.append(data[t])
+                self.q_agent.inventory.append(data[-1])
             elif action == Actions.SELL.value and len(self.q_agent.inventory) > 0:
                 reward = self.last_reward - self.previous_reward
                 self.total_reward += reward
                 self.q_agent.inventory.pop(0)
-            else:
-                pass
 
-            done = (t == data_length - 1)
-            self.q_agent.remember(state, action, reward, next_state, done)
-
+            self.q_agent.remember(self.current_state, action, reward, self.next_state, self.is_done())
             if len(self.q_agent.memory) > self.BATCH_SIZE:
                 loss = self.q_agent.train_experience_replay(self.BATCH_SIZE)
-                avg_loss.append(loss)
+                self.avg_loss.append(loss)
 
-            state = next_state
+            if self.episode % 10 == 0:
+                self.q_agent.save(self.episode)
 
-        if self.episode % 10 == 0:
-            self.q_agent.save(self.episode)
-
-        return np.mean(np.array(avg_loss))
+        self.current_state = self.next_state
+        print(action)
+        return action
 
     def evaluate(self, data):
-        data_length = len(data) - 1
-        history = []
-        self.q_agent.inventory = []
-        state = q_evaluator.get_state(data, 0, self.WINDOW_SIZE + 1)
-
-        for t in range(data_length):
-            reward = 0
-            next_state = q_evaluator.get_state(data, t + 1, self.WINDOW_SIZE + 1)
-            action = self.q_agent.act(state, is_eval=True)
+        reward = 0
+        action = Actions.SIT.value
+        if self.current_state is not None:
+            self.next_state = q_evaluator.get_state(data, self.WINDOW_SIZE + 1, self.logger)
+            action = self.q_agent.act(self.current_state, is_eval=True)
 
             if action == Actions.BUY.value:
-                self.q_agent.inventory.append(data[t])
-                history.append((data[t], "BUY"))
-
+                self.q_agent.inventory.append(data[-1])
             elif action == Actions.SELL.value and len(self.q_agent.inventory) > 0:
                 self.q_agent.inventory.pop(0)
                 reward = self.last_reward - self.previous_reward
                 self.total_reward += reward
-                history.append((data[t], "SELL"))
-            else:
-                history.append((data[t], "HOLD"))
 
-            done = (t == data_length - 1)
-            self.q_agent.memory.append((state, action, reward, next_state, done))
+            self.q_agent.memory.append((self.current_state, action, reward, self.next_state, self.is_done()))
 
-            state = next_state
-            if done:
-                return action, history
+        self.current_state = self.next_state
+        return action
