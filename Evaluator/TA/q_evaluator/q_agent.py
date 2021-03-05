@@ -28,13 +28,13 @@ import tentacles.Evaluator.TA.q_evaluator as q_evaluator
 class QAgent:
     LOGS_DIR = "/tmp/tensorboard"
 
-    def __init__(self, is_training, state_size, model_path, model_name, reset_every=1000):
+    def __init__(self, is_training, state_size, model_path, model_name):
         self.is_training = is_training
         self.model_name = model_name
         self.model_path = model_path
 
         # agent config
-        self.state_size = state_size  # normalized previous days
+        self.state_size = state_size
         self.action_size = 3  # [sit, buy, sell]
         self.model_name = model_name
         self.inventory = []
@@ -56,9 +56,6 @@ class QAgent:
             self.model = self.load()
         else:
             self.model = self._model()
-
-        self.n_iter = 1
-        self.reset_every = reset_every
 
         # target network
         self.target_model = clone_model(self.model)

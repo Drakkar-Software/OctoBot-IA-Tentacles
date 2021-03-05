@@ -13,7 +13,6 @@
 #
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
-
 from tqdm import tqdm
 
 from octobot.cli import start_background_octobot_with_args
@@ -25,13 +24,19 @@ BACKTESTING_FILES = ["ExchangeHistoryDataCollector_1589016793.8005197.data",
                      "ExchangeHistoryDataCollector_1614855165.3938067.data",
                      "ExchangeHistoryDataCollector_1586593427.2594533.data",
                      "ExchangeHistoryDataCollector_1586598990.0092158.data"]
+
 COMPLETE_RUN = 2
 
 if __name__ == '__main__':
-    for i in range(COMPLETE_RUN):
-        for backtesting_file in tqdm(BACKTESTING_FILES):
-            start_background_octobot_with_args(
-                backtesting=True,
-                simulate=False,
-                backtesting_files=[backtesting_file]
-            )
+    try:
+        for i in range(COMPLETE_RUN):
+            for backtesting_file in tqdm(BACKTESTING_FILES):
+                bot_process = start_background_octobot_with_args(
+                    backtesting=True,
+                    simulate=False,
+                    backtesting_files=[backtesting_file],
+                    in_subprocess=True
+                )
+                bot_process.join()
+    except KeyboardInterrupt:
+        pass

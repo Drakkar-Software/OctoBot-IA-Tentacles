@@ -100,7 +100,6 @@ class QEvaluator(TAEvaluator):
             self.eval_note = 1
         if action == Actions.SIT.value:
             self.eval_note = 0
-        print(self.eval_note)
         await self.evaluation_completed(cryptocurrency, symbol, time_frame,
                                         eval_time=evaluators_util.get_eval_time(full_candle=candle,
                                                                                 time_frame=time_frame))
@@ -120,7 +119,6 @@ class QEvaluator(TAEvaluator):
                                                     time_frame, include_in_construction=False)
 
     def train(self, data):
-        print("train")
         reward = 0
         action = Actions.SIT.value
         self.next_state = q_evaluator.get_state(data, self.WINDOW_SIZE + 1, self.logger)
@@ -139,11 +137,10 @@ class QEvaluator(TAEvaluator):
                 loss = self.q_agent.train_experience_replay(self.BATCH_SIZE)
                 self.avg_loss.append(loss)
 
-            if self.episode % 10 == 0:
+            if self.episode % 10 == 0 or self.is_done():
                 self.q_agent.save(self.episode)
 
         self.current_state = self.next_state
-        print(action)
         return action
 
     def evaluate(self, data):
