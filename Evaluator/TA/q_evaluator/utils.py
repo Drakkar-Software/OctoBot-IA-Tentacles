@@ -49,7 +49,7 @@ def sigmoid(v, logger):
 
 def get_state(prices, window_size, logger):
     block = prices[-window_size:] if len(prices) > window_size else window_size * [prices[0]] + prices[-1]
-    return np.array([
+    return np.array([[
         sigmoid(block[i + 1] - block[i], logger)
         for i in range(len(block) - 1)
-    ])
+    ]])

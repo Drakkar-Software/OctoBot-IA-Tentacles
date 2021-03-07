@@ -13,7 +13,10 @@
 #
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
+import logging
+import os
 import random
+import time
 from collections import deque
 
 import numpy as np
@@ -21,6 +24,7 @@ from keras.layers import Dense
 from keras.models import Sequential
 from keras.models import load_model, clone_model
 from keras.optimizers import Adam
+from tensorflow.keras.callbacks import TensorBoard
 
 import tentacles.Evaluator.TA.q_evaluator as q_evaluator
 
@@ -55,11 +59,21 @@ class QAgent:
         if not self.is_training and self.model_name is not None:
             self.model = self.load()
         else:
+            try:
+                self.model = self.load()
+            except OSError as e:
+                logging.getLogger().error(f"Impossible to load existing model : {e}")
             self.model = self._model()
 
         # target network
         self.target_model = clone_model(self.model)
         self.target_model.set_weights(self.model.get_weights())
+
+        self.tensorboard = TensorBoard(log_dir=os.path.join(os.path.basename(self.model_path),
+                                                            self.LOGS_DIR, str(time.time())),
+                                       histogram_freq=0,
+                                       profile_batch=0)
+        self.tensorboard.set_model(self.model)
 
     def _model(self):
         model = Sequential()
@@ -114,7 +128,8 @@ class QAgent:
         # update q-function parameters based on huber loss gradient
         loss = self.model.fit(
             np.array(X_train), np.array(y_train),
-            epochs=1, verbose=0
+            epochs=1, verbose=0,
+            callbacks=[self.tensorboard] if self.is_training else []
         ).history["loss"][0]
 
         # as the training goes on we want the agent to

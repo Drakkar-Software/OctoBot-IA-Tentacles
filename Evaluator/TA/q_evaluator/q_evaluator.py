@@ -14,17 +14,14 @@
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
 import enum
-import numpy as np
-import tqdm
 
-import octobot_commons.constants as commons_constants
+import octobot_commons.enums as commons_enum
 import octobot_evaluators.util as evaluators_util
 import octobot_trading.api as trading_api
-from octobot_commons import symbol_util
+import tentacles.Evaluator.TA.q_evaluator as q_evaluator
 from octobot_commons.channels_name import OctoBotTradingChannelsName
 from octobot_evaluators.evaluators import TAEvaluator
 from octobot_tentacles_manager.api.configurator import get_tentacle_config
-import tentacles.Evaluator.TA.q_evaluator as q_evaluator
 
 
 class Actions(enum.Enum):
@@ -36,9 +33,11 @@ class Actions(enum.Enum):
 class QEvaluator(TAEvaluator):
     MODEL_NAME = "q-evaluator"
     MODEL_PATH = "models"
-    WINDOW_SIZE = 10
+    WINDOW_SIZE = 24  # 24 * 1h
     BATCH_SIZE = 32
+    EPISODE_TO_SAVE = 50
     IS_TRAINING_CONFIG = "is_training"
+    SUPPORTED_TIMEFRAMES = [commons_enum.TimeFrames.ONE_HOUR.value]
 
     def __init__(self, tentacles_setup_config):
         super().__init__(tentacles_setup_config)
@@ -90,19 +89,20 @@ class QEvaluator(TAEvaluator):
 
     async def ohlcv_callback(self, exchange: str, exchange_id: str,
                              cryptocurrency: str, symbol: str, time_frame, candle, inc_in_construction_data):
-        self.episode += 1
-        prices = self.get_prices(time_frame, symbol)
-        action = self.train(prices) if self.is_training else self.evaluate(prices)
+        if time_frame in self.SUPPORTED_TIMEFRAMES:
+            self.episode += 1
+            prices = self.get_prices(time_frame, symbol)
+            action = self.train(prices) if self.is_training else self.evaluate(prices)
 
-        if action == Actions.BUY.value:
-            self.eval_note = -1
-        if action == Actions.SELL.value:
-            self.eval_note = 1
-        if action == Actions.SIT.value:
-            self.eval_note = 0
-        await self.evaluation_completed(cryptocurrency, symbol, time_frame,
-                                        eval_time=evaluators_util.get_eval_time(full_candle=candle,
-                                                                                time_frame=time_frame))
+            if action == Actions.BUY.value:
+                self.eval_note = -1
+            if action == Actions.SELL.value:
+                self.eval_note = 1
+            if action == Actions.SIT.value:
+                self.eval_note = 0
+            await self.evaluation_completed(cryptocurrency, symbol, time_frame,
+                                            eval_time=evaluators_util.get_eval_time(full_candle=candle,
+                                                                                    time_frame=time_frame))
 
     def is_done(self):
         try:
@@ -137,7 +137,7 @@ class QEvaluator(TAEvaluator):
                 loss = self.q_agent.train_experience_replay(self.BATCH_SIZE)
                 self.avg_loss.append(loss)
 
-            if self.episode % 10 == 0 or self.is_done():
+            if self.episode % self.EPISODE_TO_SAVE == 0 or self.is_done():
                 self.q_agent.save(self.episode)
 
         self.current_state = self.next_state
@@ -146,8 +146,9 @@ class QEvaluator(TAEvaluator):
     def evaluate(self, data):
         reward = 0
         action = Actions.SIT.value
+        self.next_state = q_evaluator.get_state(data, self.WINDOW_SIZE + 1, self.logger)
+
         if self.current_state is not None:
-            self.next_state = q_evaluator.get_state(data, self.WINDOW_SIZE + 1, self.logger)
             action = self.q_agent.act(self.current_state, is_eval=True)
 
             if action == Actions.BUY.value:
