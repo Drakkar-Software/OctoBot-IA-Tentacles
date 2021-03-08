@@ -201,6 +201,7 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
         self.logger.info(f"Reward updated : last_reward = {self.last_reward} & total_reward = {self.total_reward}")
 
     async def set_final_eval(self, matrix_id: str, cryptocurrency: str, symbol: str, time_frame):
+        self.episode += 1
         for evaluated_strategy_node in matrix.get_tentacles_value_nodes(
                 matrix_id,
                 matrix.get_tentacle_nodes(matrix_id,
@@ -250,13 +251,13 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
             reward = self.last_reward - self.previous_reward
             self.total_reward += reward
             self.q_agent.remember(self.current_state, action, reward, self.next_state, self.is_done())
-            self.save_loss()
+            self.replay_experience()
             self.save_if_necessary()
 
         self.current_state = self.next_state
         return action
 
-    def save_loss(self):
+    def replay_experience(self):
         if len(self.q_agent.memory) > self.BATCH_SIZE:
             loss = self.q_agent.train_experience_replay(self.BATCH_SIZE)
             self.logger.info(f"Trained experience, loss = {loss}")

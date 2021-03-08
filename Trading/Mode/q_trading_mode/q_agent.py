@@ -13,8 +13,10 @@
 #
 #  You should have received a copy of the GNU Lesser General Public
 #  License along with this library.
+import json
 import logging
 import os
+import pickle
 import random
 import time
 from collections import deque
@@ -132,6 +134,27 @@ class QAgent:
 
     def save(self, episode):
         self.model.save(f"{self.model_path}/{self.model_name}_{episode}")
+        self.save_memory(episode)
+
+    def save_memory(self, episode):
+        with open(f"{self.model_path}/{self.model_name}_{episode}/memory.json", 'w') as memory_file:
+            memory_file.write(json.dumps(
+                {
+                    "memory": list(pickle.dumps(self.memory)),
+                    "epsilon": self.epsilon
+                }
+            ))
 
     def load(self):
-        return load_model(f"{self.model_path}/{self.model_name}", custom_objects=self.custom_objects)
+        model = load_model(f"{self.model_path}/{self.model_name}", custom_objects=self.custom_objects)
+        self.load_memory()
+        return model
+
+    def load_memory(self):
+        try:
+            with open(f"{self.model_path}/{self.model_name}/memory.json", 'r') as memory_file:
+                memory_data = json.loads(memory_file.read())
+                self.memory = deque(pickle.loads(memory_data["memory"]))
+                self.epsilon = memory_data["epsilon"]
+        except OSError as e:
+            pass
