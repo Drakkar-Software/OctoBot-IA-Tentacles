@@ -48,7 +48,10 @@ if __name__ == '__main__':
                     if file_name.startswith(MODEL_NAME + MODEL_SEPARATOR):
                         file_index = int(file_name.split(MODEL_SEPARATOR)[-1])
                         max_file_index = max(max_file_index, file_index)
-                shutil.rmtree(os.path.join(MODELS_PATH, MODEL_NAME))
+                try:
+                    shutil.rmtree(os.path.join(MODELS_PATH, MODEL_NAME))
+                except FileNotFoundError:
+                    pass
                 shutil.copytree(os.path.join(MODELS_PATH, MODEL_NAME + MODEL_SEPARATOR + str(max_file_index)),
                                 os.path.join(MODELS_PATH, MODEL_NAME))
     except KeyboardInterrupt:

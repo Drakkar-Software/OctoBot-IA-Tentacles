@@ -140,7 +140,7 @@ class QAgent:
         with open(f"{self.model_path}/{self.model_name}_{episode}/memory.json", 'w') as memory_file:
             memory_file.write(json.dumps(
                 {
-                    "memory": list(pickle.dumps(self.memory)),
+                    # "memory": list(pickle.dumps(self.memory)),
                     "epsilon": self.epsilon
                 }
             ))
@@ -154,7 +154,6 @@ class QAgent:
         try:
             with open(f"{self.model_path}/{self.model_name}/memory.json", 'r') as memory_file:
                 memory_data = json.loads(memory_file.read())
-                self.memory = deque(pickle.loads(memory_data["memory"]))
                 self.epsilon = memory_data["epsilon"]
         except OSError as e:
             pass

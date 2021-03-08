@@ -87,15 +87,12 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
         return True
 
     async def create_new_orders(self, symbol, final_note, state, **kwargs):
-        order_type, order_price = final_note
+        order_type = final_note
+        current_symbol_holding, current_market_holding, market_quantity, price, symbol_market = \
+            await trading_personal_data.get_pre_order_data(self.exchange_manager, symbol=symbol,
+                                                           timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
 
-        currency, market = symbol_util.split_symbol(symbol)
-        current_symbol_holding = self.exchange_manager.exchange_personal_data.portfolio_manager.portfolio \
-            .get_currency_portfolio(currency)
-        current_market_quantity = self.exchange_manager.exchange_personal_data.portfolio_manager.portfolio \
-            .get_currency_portfolio(market)
-
-        self.logger.debug(f"New final note : {order_type} {order_price}")
+        self.logger.debug(f"New final note : {order_type}")
         if order_type != ActionOrderType.SIT.value:
             try:
                 trader_order_type = None
@@ -105,9 +102,9 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
                     current_order = trading_personal_data.create_order_instance(trader=self.trader,
                                                                                 order_type=trader_order_type,
                                                                                 symbol=symbol,
-                                                                                current_price=order_price,
-                                                                                quantity=current_market_quantity,
-                                                                                price=order_price)
+                                                                                current_price=price,
+                                                                                quantity=current_symbol_holding,
+                                                                                price=price)
                 # elif order_type == ActionOrderType.BUY_LIMIT.value:
                 #     trader_order_type = trading_enums.TraderOrderType.BUY_LIMIT
                 elif order_type == ActionOrderType.SELL_MARKET.value:
@@ -117,9 +114,9 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
                     current_order = trading_personal_data.create_order_instance(trader=self.trader,
                                                                                 order_type=trader_order_type,
                                                                                 symbol=symbol,
-                                                                                current_price=order_price,
-                                                                                quantity=current_symbol_holding,
-                                                                                price=order_price)
+                                                                                current_price=price,
+                                                                                quantity=market_quantity,
+                                                                                price=price)
                 await self.trader.create_order(current_order)
                 return [current_order]
             except (trading_errors.MissingFunds, trading_errors.MissingMinimalExchangeTradeVolume):
@@ -129,7 +126,7 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
                     f"Impossible to create order for {symbol} on {self.exchange_manager.exchange_name}: {e} "
                     f"and is necessary to compute the order details.")
             except Exception as e:
-                self.logger.exception(e, True, f"Failed to create order : {e}.")
+                self.logger.error(f"Failed to create order : {e}.")
         else:
             self.logger.debug("Doesn't create new order : SIT")
         return []
@@ -217,7 +214,7 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                 await self.submit_trading_evaluation(cryptocurrency=cryptocurrency,
                                                      symbol=symbol,
                                                      time_frame=None,
-                                                     final_note=[action, mark_price])
+                                                     final_note=action)
 
     def flatten_eval_notes(self, eval_dict: dict):
         for eval_by_ta in eval_dict.values():
