@@ -1,0 +1,5 @@
+{
+    "default_config": [],
+    "required_strategies": ["ForwardStrategyEvaluator"],
+    "is_training": true
+}
