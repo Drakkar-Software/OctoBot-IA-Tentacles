@@ -86,12 +86,16 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
     async def can_create_order(self, symbol, state):
         return True
 
-    async def create_new_orders(self, symbol, final_note, state, **kwargs):
-        order_type = final_note
-        current_symbol_holding, current_market_holding, market_quantity, price, symbol_market = \
-            await trading_personal_data.get_pre_order_data(self.exchange_manager, symbol=symbol,
-                                                           timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
+    def reduce_next_reward(self):
+        for producer in self.trading_mode.producers:
+            producer.should_reduce_next_reward = True
 
+    def increase_next_reward(self):
+        for producer in self.trading_mode.producers:
+            producer.should_increase_next_reward = True
+
+    async def create_new_orders(self, symbol, final_note, state, **kwargs):
+        order_type, price, symbol_holding, market_holding = final_note
         self.logger.debug(f"New final note : {order_type}")
         if order_type != ActionOrderType.SIT.value:
             try:
@@ -99,26 +103,35 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
                 current_order = None
                 if order_type == ActionOrderType.BUY_MARKET.value:
                     trader_order_type = trading_enums.TraderOrderType.BUY_MARKET
-                    current_order = trading_personal_data.create_order_instance(trader=self.trader,
-                                                                                order_type=trader_order_type,
-                                                                                symbol=symbol,
-                                                                                current_price=price,
-                                                                                quantity=current_symbol_holding,
-                                                                                price=price)
+                    if market_holding > 0:
+                        current_order = trading_personal_data.create_order_instance(trader=self.trader,
+                                                                                    order_type=trader_order_type,
+                                                                                    symbol=symbol,
+                                                                                    current_price=price,
+                                                                                    quantity=market_holding,
+                                                                                    price=price)
+                        self.increase_next_reward()
+                    else:
+                        self.reduce_next_reward()
                 # elif order_type == ActionOrderType.BUY_LIMIT.value:
                 #     trader_order_type = trading_enums.TraderOrderType.BUY_LIMIT
                 elif order_type == ActionOrderType.SELL_MARKET.value:
                     trader_order_type = trading_enums.TraderOrderType.SELL_MARKET
                     # elif order_type == ActionOrderType.SELL_LIMIT.value:
                     #     trader_order_type = trading_enums.TraderOrderType.SELL_LIMIT
-                    current_order = trading_personal_data.create_order_instance(trader=self.trader,
-                                                                                order_type=trader_order_type,
-                                                                                symbol=symbol,
-                                                                                current_price=price,
-                                                                                quantity=market_quantity,
-                                                                                price=price)
-                await self.trader.create_order(current_order)
-                return [current_order]
+                    if symbol_holding > 0:
+                        current_order = trading_personal_data.create_order_instance(trader=self.trader,
+                                                                                    order_type=trader_order_type,
+                                                                                    symbol=symbol,
+                                                                                    current_price=price,
+                                                                                    quantity=symbol_holding,
+                                                                                    price=price)
+                        self.increase_next_reward()
+                    else:
+                        self.reduce_next_reward()
+                if current_order:
+                    await self.trader.create_order(current_order)
+                    return [current_order]
             except (trading_errors.MissingFunds, trading_errors.MissingMinimalExchangeTradeVolume):
                 raise
             except asyncio.TimeoutError as e:
@@ -137,13 +150,14 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
     MODEL_PATH = "models"
     EVALUATION_SIZE = 5
     EVALUATION_COUNT = 1  # RSI
-    EVALUATOR_TIME_FRAMES_COUNT = 3  # 5m, 1h, 1d
+    EVALUATOR_TIME_FRAMES_COUNT = 2  # 1h, 1d
     FINAL_EVAL_SIZE = EVALUATION_COUNT * EVALUATION_SIZE * EVALUATOR_TIME_FRAMES_COUNT
-    WINDOW_SIZE = 1 + FINAL_EVAL_SIZE  # current price + FINAL_EVAL_SIZE
+    WINDOW_SIZE = 3 + FINAL_EVAL_SIZE  # current price + symbol holding + market holding + FINAL_EVAL_SIZE
     OUTPUT_SIZE = 3  # SIT, BUY, SELL
     BATCH_SIZE = 32
     EPISODE_TO_SAVE = 50
     IS_TRAINING_CONFIG = "is_training"
+    REWARD_CHANGING_FACTOR = 0.005
 
     def __init__(self, channel, config, trading_mode, exchange_manager):
         super().__init__(channel, config, trading_mode, exchange_manager)
@@ -162,6 +176,9 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
         self.last_reward = 0
         self.previous_reward = 0
         self.episode = 0
+
+        self.should_reduce_next_reward = False
+        self.should_increase_next_reward = False
 
         self.current_state = None
         self.next_state = None
@@ -195,6 +212,7 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                                              ):
         self.previous_reward = self.last_reward
         self.last_reward = (profitability_percent - market_profitability_percent) / 100
+        print(profitability_percent, market_profitability_percent)
         self.logger.info(f"Reward updated : last_reward = {self.last_reward} & total_reward = {self.total_reward}")
 
     async def set_final_eval(self, matrix_id: str, cryptocurrency: str, symbol: str, time_frame):
@@ -209,12 +227,15 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
             self.final_eval = np.array([])
             self.flatten_eval_notes(evaluators_api.get_value(evaluated_strategy_node))
             if len(self.final_eval) == self.FINAL_EVAL_SIZE:
-                mark_price = await self.pre_eval_data(symbol, self.exchange_manager)
-                action = self.train(mark_price) if self.IS_TRAINING else self.evaluate(mark_price)
+                symbol_holding, _, market_holding, price, _ = \
+                    await trading_personal_data.get_pre_order_data(self.exchange_manager, symbol=symbol,
+                                                                   timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
+                action = self.train(price, symbol_holding, market_holding) \
+                    if self.IS_TRAINING else self.evaluate(price, symbol_holding, market_holding)
                 await self.submit_trading_evaluation(cryptocurrency=cryptocurrency,
                                                      symbol=symbol,
                                                      time_frame=None,
-                                                     final_note=action)
+                                                     final_note=[action, price, symbol_holding, market_holding])
 
     def flatten_eval_notes(self, eval_dict: dict):
         for eval_by_ta in eval_dict.values():
@@ -225,29 +246,12 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                 if isinstance(eval_value, int) or isinstance(eval_value, float):
                     self.final_eval = np.append(self.final_eval, eval_value)
 
-    async def pre_eval_data(self, symbol, exchange_manager):
-        # currency, market = symbol_util.split_symbol(symbol)
-        # current_symbol_holding = self.exchange_manager.exchange_personal_data.portfolio_manager.portfolio \
-        #     .get_currency_portfolio(currency)
-        # current_market_quantity = self.exchange_manager.exchange_personal_data.portfolio_manager.portfolio \
-        #     .get_currency_portfolio(market)
-
-        try:
-            mark_price = await exchange_manager.exchange_symbols_data.get_exchange_symbol_data(symbol) \
-                .prices_manager.get_mark_price(timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
-        except asyncio.TimeoutError:
-            raise asyncio.TimeoutError("Mark price is not available")
-        return mark_price
-
-    def train(self, current_price):
+    def train(self, current_price, symbol_holding, market_holding):
         action = ActionOrderType.SIT.value
-        self.next_state = get_state(current_price, self.final_eval)
+        self.next_state = get_state(current_price, symbol_holding, market_holding, self.final_eval)
 
         if self.current_state is not None:
-            action = self.q_agent.act(self.current_state)
-            reward = self.last_reward - self.previous_reward
-            self.total_reward += reward
-            self.q_agent.remember(self.current_state, action, reward, self.next_state, self.is_done())
+            action = self.act_and_reward()
             self.replay_experience()
             self.save_if_necessary()
 
@@ -263,17 +267,36 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
         if self.episode % self.EPISODE_TO_SAVE == 0 or self.is_done():
             self.q_agent.save(self.episode)
 
-    def evaluate(self, current_price):
+    def get_reward(self):
+        reward = self.last_reward - self.previous_reward
+        if self.IS_TRAINING:
+            if self.should_reduce_next_reward:
+                reward_reducing_value = -abs(self.REWARD_CHANGING_FACTOR)
+                self.logger.info(f"Reducing reward by = {reward_reducing_value}")
+                reward += reward_reducing_value
+                self.should_reduce_next_reward = False
+            if self.should_increase_next_reward:
+                reward_increasing_value = abs(self.REWARD_CHANGING_FACTOR)
+                self.logger.info(f"Increasing reward by = {reward_increasing_value}")
+                reward += reward_increasing_value
+                self.should_increase_next_reward = False
+        return reward
+
+    def evaluate(self, current_price, symbol_holding, market_holding):
         action = ActionOrderType.SIT.value
-        self.next_state = get_state(current_price, self.final_eval)
+        self.next_state = get_state(current_price, symbol_holding, market_holding, self.final_eval)
 
         if self.current_state is not None:
-            action = self.q_agent.act(self.current_state, is_eval=True)
-            reward = self.last_reward - self.previous_reward
-            self.total_reward += reward
-            self.q_agent.memory.append((self.current_state, action, reward, self.next_state, self.is_done()))
+            action = self.act_and_reward()
 
         self.current_state = self.next_state
+        return action
+
+    def act_and_reward(self):
+        action = self.q_agent.act(self.current_state, is_eval=True)
+        reward = self.get_reward()
+        self.total_reward += reward
+        self.q_agent.remember(self.current_state, action, reward, self.next_state, self.is_done())
         return action
 
     def is_done(self):
