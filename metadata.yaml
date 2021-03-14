@@ -1,0 +1,9 @@
+author: DrakkarSoftware
+name: ia-base
+short-name: ia-base
+repository: OctoBot-IA-Tentacles
+version: VERSION_PLACEHOLDER
+description: >
+  This package contains IA evaluators, strategies, utilitary modules and trading modes.
+tags:
+  - officials
