@@ -19,11 +19,11 @@ from tqdm import tqdm
 import shutil
 from octobot.cli import start_background_octobot_with_args
 
-BACKTESTING_FILES = ["ExchangeHistoryDataCollector_1614637233.3378873.data",
-                     "ExchangeHistoryDataCollector_1588624733.7239532.data",
-                     "ExchangeHistoryDataCollector_1587760604.1586962.data",
-                     "ExchangeHistoryDataCollector_1589300711.251622.data",
-                     "ExchangeHistoryDataCollector_1591017226.4178503.data", ]
+BACKTESTING_FILES = [
+    "ExchangeHistoryDataCollector_1589300711.251622.data",
+    "ExchangeHistoryDataCollector_1614637233.3378873.data",
+    "ExchangeHistoryDataCollector_1588624733.7239532.data",
+    "ExchangeHistoryDataCollector_1591017226.4178503.data", ]
 
 COMPLETE_RUN = 2
 MODELS_PATH = "models"

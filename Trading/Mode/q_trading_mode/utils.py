@@ -47,9 +47,7 @@ def sigmoid(v):
         print(f"Error when computing sigmoid : {e}")
 
 
-def get_state(current_price, symbol_holding, market_holding, evaluation_values):
+def get_state(current_price, evaluation_values):
     return np.array([[sigmoid(current_price),
-                      sigmoid(symbol_holding),
-                      sigmoid(market_holding),
                       *[sigmoid(value) for value in evaluation_values]]],
                     dtype=float)

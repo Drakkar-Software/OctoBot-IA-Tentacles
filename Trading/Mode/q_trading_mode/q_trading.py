@@ -16,30 +16,28 @@
 import asyncio
 import enum
 
-import numpy as np
-
 import async_channel.constants as channel_constants
+import numpy as np
 
 import octobot_evaluators.api as evaluators_api
 import octobot_evaluators.enums as evaluators_enums
 import octobot_evaluators.matrix as matrix
 import octobot_trading.constants as trading_constants
-import octobot_trading.exchange_channel as exchanges_channel
 import octobot_trading.enums as trading_enums
-import octobot_trading.modes as trading_modes
-from octobot_commons import symbol_util
 import octobot_trading.errors as trading_errors
+import octobot_trading.exchange_channel as exchanges_channel
+import octobot_trading.modes as trading_modes
 import octobot_trading.personal_data as trading_personal_data
 from tentacles.Trading.Mode.q_trading_mode.q_agent import QAgent
 from tentacles.Trading.Mode.q_trading_mode.utils import get_state
 
 
-class ActionOrderType(enum.Enum):
-    SIT = 0
-    BUY_MARKET = 1
-    SELL_MARKET = 2
-    BUY_LIMIT = 3
-    SELL_LIMIT = 4
+class ActionState(enum.Enum):
+    STATE_VERY_SHORT = 0
+    STATE_SHORT = 1
+    STATE_NEUTRAL = 2
+    STATE_LONG = 3
+    STATE_VERY_LONG = 4
 
 
 class QTradingMode(trading_modes.AbstractTradingMode):
@@ -86,78 +84,82 @@ class QTradingModeConsumer(trading_modes.AbstractTradingModeConsumer):
     async def can_create_order(self, symbol, state):
         return True
 
-    def reduce_next_reward(self):
-        for producer in self.trading_mode.producers:
-            producer.should_reduce_next_reward = True
-
-    def increase_next_reward(self):
-        for producer in self.trading_mode.producers:
-            producer.should_increase_next_reward = True
-
     async def create_new_orders(self, symbol, final_note, state, **kwargs):
-        order_type, price, symbol_holding, market_holding = final_note
-        self.logger.debug(f"New final note : {order_type}")
-        if order_type != ActionOrderType.SIT.value:
-            try:
-                trader_order_type = None
-                current_order = None
-                if order_type == ActionOrderType.BUY_MARKET.value:
-                    trader_order_type = trading_enums.TraderOrderType.BUY_MARKET
-                    if market_holding > 0:
-                        current_order = trading_personal_data.create_order_instance(trader=self.trader,
-                                                                                    order_type=trader_order_type,
-                                                                                    symbol=symbol,
-                                                                                    current_price=price,
-                                                                                    quantity=market_holding,
-                                                                                    price=price)
-                        self.increase_next_reward()
-                    else:
-                        self.reduce_next_reward()
-                # elif order_type == ActionOrderType.BUY_LIMIT.value:
-                #     trader_order_type = trading_enums.TraderOrderType.BUY_LIMIT
-                elif order_type == ActionOrderType.SELL_MARKET.value:
-                    trader_order_type = trading_enums.TraderOrderType.SELL_MARKET
-                    # elif order_type == ActionOrderType.SELL_LIMIT.value:
-                    #     trader_order_type = trading_enums.TraderOrderType.SELL_LIMIT
-                    if symbol_holding > 0:
-                        current_order = trading_personal_data.create_order_instance(trader=self.trader,
-                                                                                    order_type=trader_order_type,
-                                                                                    symbol=symbol,
-                                                                                    current_price=price,
-                                                                                    quantity=symbol_holding,
-                                                                                    price=price)
-                        self.increase_next_reward()
-                    else:
-                        self.reduce_next_reward()
-                if current_order:
-                    await self.trader.create_order(current_order)
-                    return [current_order]
-            except (trading_errors.MissingFunds, trading_errors.MissingMinimalExchangeTradeVolume):
-                raise
-            except asyncio.TimeoutError as e:
-                self.logger.error(
-                    f"Impossible to create order for {symbol} on {self.exchange_manager.exchange_name}: {e} "
-                    f"and is necessary to compute the order details.")
-            except Exception as e:
-                self.logger.error(f"Failed to create order : {e}.")
-        else:
-            self.logger.debug("Doesn't create new order : SIT")
+        symbol_holding, _, market_holding, price, _ = \
+            await trading_personal_data.get_pre_order_data(self.exchange_manager,
+                                                           symbol=symbol,
+                                                           timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
+        try:
+            current_order = None
+            if state == trading_enums.EvaluatorStates.VERY_SHORT.value:
+                if symbol_holding > 0:
+                    current_order = trading_personal_data.create_order_instance(
+                        trader=self.trader,
+                        order_type=trading_enums.TraderOrderType.SELL_MARKET,
+                        symbol=symbol,
+                        current_price=price,
+                        quantity=symbol_holding * 0.99999,
+                        price=price)
+
+            if state == trading_enums.EvaluatorStates.SHORT.value:
+                if symbol_holding > 0:
+                    current_order = trading_personal_data.create_order_instance(
+                        trader=self.trader,
+                        order_type=trading_enums.TraderOrderType.SELL_MARKET,
+                        symbol=symbol,
+                        current_price=price,
+                        quantity=symbol_holding / 2,
+                        price=price)
+
+            if state == trading_enums.EvaluatorStates.NEUTRAL.value:
+                pass
+
+            if state == trading_enums.EvaluatorStates.LONG.value:
+                if market_holding > 0:
+                    current_order = trading_personal_data.create_order_instance(
+                        trader=self.trader,
+                        order_type=trading_enums.TraderOrderType.BUY_MARKET,
+                        symbol=symbol,
+                        current_price=price,
+                        quantity=market_holding / 2,
+                        price=price)
+
+            if state == trading_enums.EvaluatorStates.VERY_LONG.value:
+                if market_holding > 0:
+                    current_order = trading_personal_data.create_order_instance(
+                        trader=self.trader,
+                        order_type=trading_enums.TraderOrderType.BUY_MARKET,
+                        symbol=symbol,
+                        current_price=price,
+                        quantity=market_holding * 0.99999,
+                        price=price)
+
+            if current_order:
+                await self.trader.create_order(current_order)
+                return [current_order]
+        except (trading_errors.MissingFunds, trading_errors.MissingMinimalExchangeTradeVolume):
+            raise
+        except asyncio.TimeoutError as e:
+            self.logger.error(
+                f"Impossible to create order for {symbol} on {self.exchange_manager.exchange_name}: {e} "
+                f"and is necessary to compute the order details.")
+        except Exception as e:
+            self.logger.error(f"Failed to create order : {e}.")
         return []
 
 
 class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
     MODEL_NAME = "q-trading"
     MODEL_PATH = "models"
-    EVALUATION_SIZE = 5
+    EVALUATION_SIZE = 10
     EVALUATION_COUNT = 1  # RSI
     EVALUATOR_TIME_FRAMES_COUNT = 2  # 1h, 1d
     FINAL_EVAL_SIZE = EVALUATION_COUNT * EVALUATION_SIZE * EVALUATOR_TIME_FRAMES_COUNT
-    WINDOW_SIZE = 3 + FINAL_EVAL_SIZE  # current price + symbol holding + market holding + FINAL_EVAL_SIZE
-    OUTPUT_SIZE = 3  # SIT, BUY, SELL
+    WINDOW_SIZE = 1 + FINAL_EVAL_SIZE  # current price + FINAL_EVAL_SIZE
+    OUTPUT_SIZE = len(ActionState)
     BATCH_SIZE = 32
     EPISODE_TO_SAVE = 50
     IS_TRAINING_CONFIG = "is_training"
-    REWARD_CHANGING_FACTOR = 0.005
 
     def __init__(self, channel, config, trading_mode, exchange_manager):
         super().__init__(channel, config, trading_mode, exchange_manager)
@@ -170,15 +172,17 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
             model_path=self.MODEL_PATH,
             state_size=self.WINDOW_SIZE,
             output_size=self.OUTPUT_SIZE,
-            action_size=3)
+            action_size=self.OUTPUT_SIZE)
 
         self.total_reward = 0
         self.last_reward = 0
+        self.next_reward = 0
         self.previous_reward = 0
-        self.episode = 0
 
-        self.should_reduce_next_reward = False
-        self.should_increase_next_reward = False
+        self.initial_state_reward = None
+        self.current_state_reward = 0
+
+        self.episode = 0
 
         self.current_state = None
         self.next_state = None
@@ -211,9 +215,16 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                                              initial_portfolio_current_profitability,
                                              ):
         self.previous_reward = self.last_reward
-        self.last_reward = (profitability_percent - market_profitability_percent) / 100
-        print(profitability_percent, market_profitability_percent)
-        self.logger.info(f"Reward updated : last_reward = {self.last_reward} & total_reward = {self.total_reward}")
+        reward = self.calculate_reward(profitability_percent, market_profitability_percent)
+
+        if self.initial_state_reward is None:
+            self.initial_state_reward = reward
+
+        self.current_state_reward = (abs(reward) - abs(self.initial_state_reward))
+        self.last_reward = reward
+        self.logger.info(f"Reward updated : last_reward = {self.last_reward} "
+                         f"& current state reward = {self.current_state_reward} "
+                         f"& total_reward = {self.total_reward}")
 
     async def set_final_eval(self, matrix_id: str, cryptocurrency: str, symbol: str, time_frame):
         self.episode += 1
@@ -224,18 +235,54 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                                           tentacle_type=evaluators_enums.EvaluatorMatrixTypes.STRATEGIES.value),
                 cryptocurrency=cryptocurrency,
                 symbol=symbol):
-            self.final_eval = np.array([])
-            self.flatten_eval_notes(evaluators_api.get_value(evaluated_strategy_node))
+            self._set_final_eval(evaluated_strategy_node)
             if len(self.final_eval) == self.FINAL_EVAL_SIZE:
-                symbol_holding, _, market_holding, price, _ = \
-                    await trading_personal_data.get_pre_order_data(self.exchange_manager, symbol=symbol,
-                                                                   timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
-                action = self.train(price, symbol_holding, market_holding) \
-                    if self.IS_TRAINING else self.evaluate(price, symbol_holding, market_holding)
+                price = await self.get_price(symbol)
+                action = self.train(price) if self.IS_TRAINING else self.evaluate(price)
+                await self.submit_trading_evaluation_if_necessary(action, price, cryptocurrency, symbol)
+            else:
+                self.logger.warning(f"Dropping eval note : len(final_eval) != FINAL_EVAL_SIZE "
+                                    f"({len(self.final_eval)} != {self.FINAL_EVAL_SIZE})")
+
+    def _set_final_eval(self, evaluated_strategy_node):
+        self.final_eval = np.array([])
+        self.flatten_eval_notes(evaluators_api.get_value(evaluated_strategy_node))
+
+    async def get_price(self, symbol):
+        try:
+            return await self.exchange_manager.exchange_symbols_data.get_exchange_symbol_data(symbol) \
+                .prices_manager.get_mark_price(timeout=trading_constants.ORDER_DATA_FETCHING_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError("Mark price is not available")
+
+    async def submit_trading_evaluation_if_necessary(self, action, price, cryptocurrency, symbol):
+        new_state = self.get_state_from_action(action)
+        if new_state != self.state:
+            self.logger.info(f"[{symbol}] new state: {new_state.name}")
+            self.logger.info(f"[{symbol}] Rewarding new state with : {self.current_state_reward}")
+            self.next_reward = self.current_state_reward
+            self.initial_state_reward = None
+            self.state = new_state
+
+            # if new state is not neutral --> cancel orders and create new else keep orders
+            if new_state is not trading_enums.EvaluatorStates.NEUTRAL:
                 await self.submit_trading_evaluation(cryptocurrency=cryptocurrency,
                                                      symbol=symbol,
                                                      time_frame=None,
-                                                     final_note=[action, price, symbol_holding, market_holding])
+                                                     final_note=self.final_eval,
+                                                     state=self.state)
+
+    def get_state_from_action(self, action):
+        if action == ActionState.STATE_VERY_SHORT.value:
+            return trading_enums.EvaluatorStates.VERY_SHORT
+        if action == ActionState.STATE_SHORT.value:
+            return trading_enums.EvaluatorStates.SHORT
+        if action == ActionState.STATE_NEUTRAL.value:
+            return trading_enums.EvaluatorStates.NEUTRAL
+        if action == ActionState.STATE_LONG.value:
+            return trading_enums.EvaluatorStates.LONG
+        if action == ActionState.STATE_VERY_LONG.value:
+            return trading_enums.EvaluatorStates.VERY_LONG
 
     def flatten_eval_notes(self, eval_dict: dict):
         for eval_by_ta in eval_dict.values():
@@ -246,9 +293,9 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
                 if isinstance(eval_value, int) or isinstance(eval_value, float):
                     self.final_eval = np.append(self.final_eval, eval_value)
 
-    def train(self, current_price, symbol_holding, market_holding):
-        action = ActionOrderType.SIT.value
-        self.next_state = get_state(current_price, symbol_holding, market_holding, self.final_eval)
+    def train(self, current_price):
+        action = ActionState.STATE_NEUTRAL.value
+        self.next_state = get_state(current_price, self.final_eval)
 
         if self.current_state is not None:
             action = self.act_and_reward()
@@ -256,6 +303,7 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
             self.save_if_necessary()
 
         self.current_state = self.next_state
+        print(action)
         return action
 
     def replay_experience(self):
@@ -267,33 +315,29 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
         if self.episode % self.EPISODE_TO_SAVE == 0 or self.is_done():
             self.q_agent.save(self.episode)
 
+    def calculate_reward(self, current_profitability, market_profitability):
+        return (current_profitability - market_profitability) / 100
+
     def get_reward(self):
         reward = self.last_reward - self.previous_reward
-        if self.IS_TRAINING:
-            if self.should_reduce_next_reward:
-                reward_reducing_value = -abs(self.REWARD_CHANGING_FACTOR)
-                self.logger.info(f"Reducing reward by = {reward_reducing_value}")
-                reward += reward_reducing_value
-                self.should_reduce_next_reward = False
-            if self.should_increase_next_reward:
-                reward_increasing_value = abs(self.REWARD_CHANGING_FACTOR)
-                self.logger.info(f"Increasing reward by = {reward_increasing_value}")
-                reward += reward_increasing_value
-                self.should_increase_next_reward = False
+        if self.next_reward != 0:
+            reward += self.next_reward
+            self.next_reward = 0
         return reward
 
-    def evaluate(self, current_price, symbol_holding, market_holding):
-        action = ActionOrderType.SIT.value
-        self.next_state = get_state(current_price, symbol_holding, market_holding, self.final_eval)
+    def evaluate(self, current_price):
+        action = ActionState.STATE_NEUTRAL.value
+        self.next_state = get_state(current_price, self.final_eval)
 
         if self.current_state is not None:
             action = self.act_and_reward()
 
+        print(action)
         self.current_state = self.next_state
         return action
 
     def act_and_reward(self):
-        action = self.q_agent.act(self.current_state, is_eval=True)
+        action = self.q_agent.act(self.current_state, is_eval=not self.IS_TRAINING)
         reward = self.get_reward()
         self.total_reward += reward
         self.q_agent.remember(self.current_state, action, reward, self.next_state, self.is_done())
@@ -301,5 +345,5 @@ class QTradingModeProducer(trading_modes.AbstractTradingModeProducer):
 
     def is_done(self):
         if self.exchange_manager is not None and self.exchange_manager.backtesting:
-            return self.exchange_manager.backtesting.get_progress() >= 0.999
+            return self.exchange_manager.backtesting.get_progress() >= 0.995
         return False
