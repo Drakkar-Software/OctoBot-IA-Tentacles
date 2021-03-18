@@ -1,5 +1,11 @@
 name: OctoBot-IA-Tentacles-CI
-on: push
+on:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - '*'
+  pull_request:
 
 jobs:
   tests:
